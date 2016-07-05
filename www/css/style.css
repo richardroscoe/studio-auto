@@ -1,0 +1,9 @@
+@charset "utf-8";
+/* CSS Document */
+#connectionStatus {
+	font-size: 0.75em;
+}
+
+.timetxt {
+	font-weight: normal;
+}

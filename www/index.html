@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="http://code.jquery.com/mobile/1.4.5/jquery.mobile-1.4.5.min.css">
+<link rel="stylesheet" href="/css/style.css">
+<script src="http://code.jquery.com/jquery-1.11.3.min.js"></script>
+<script src="http://code.jquery.com/mobile/1.4.5/jquery.mobile-1.4.5.min.js"></script>
+</head>
+<body>
+
+    <div data-role="page" id="pageone">
+      <div data-role="header">
+      <h1>Studio Automation</h1>
+      </div>
+    
+      <div data-role="main" class="ui-content">
+        <p><span id="connectionStatus">Connection</span> 
+        <h3 class="ui-bar ui-bar-a ui-corner-all">Thermostat: <span id="studioSensorTime" class="timetxt">time</span></h3>
+        <div class="ui-grid-b">
+          <div class="ui-block-a">
+            <a href="#" class="ui-btn ui-corner-all ui-shadow"><span id="studioTemp">temp</span></a>
+          </div>
+          <div class="ui-block-b">
+            <a href="#" class="ui-btn ui-corner-all ui-shadow"><span id="studioHumidity">humidity</span></a>
+          </div>
+          <div class="ui-block-c">
+            <a href="#" class="ui-btn ui-corner-all ui-shadow"><span id="studioRoC">roc</span></a>
+          </div>
+        </div> <!-- Temp, humidity, RoC -->
+        
+    
+        <form>
+            <div class="ui-field-contain">
+                <label for="thermoControl">Thermostat Control:</label>
+                    <select id="thermoControl" name="thermoControl" data-role="flipswitch">
+                    <option>Off</option>
+                    <option selected="">On</option>
+                </select>
+            </div>
+            <div class="ui-field-contain">
+                <label for="sp0input">Setpoint 0:</label>
+                <input type="range" name="sp0input" id="sp0input" min="5" max="30" value="20" step="0.5" data-highlight="true">
+            </div>
+            <div class="ui-field-contain">
+                <label for="sp1input">Setpoint 1:</label>
+                <input type="range" name="sp1input" id="sp1input" min="5" max="30" value="20" step="0.5" data-highlight="true" >
+            </div>
+        </form>
+    
+        <h3 class="ui-bar ui-bar-a ui-corner-all">Lights: <span id="studioLightTime" class="timetxt">time</span></h3>
+    
+        <form>
+            <div class="ui-field-contain">
+                <label for="flip-select-second">Spots:</label>
+                    <select id="switch0" name="flip-select" data-role="flipswitch">
+                    <option>Off</option>
+                    <option selected="">On</option>
+                </select>
+            </div>
+            <div class="ui-field-contain">
+                <label for="flip-select-second">Exterior:</label>
+                    <select id="switch1" name="flip-select" data-role="flipswitch">
+                    <option>Off</option>
+                    <option selected="">On</option>
+                </select>
+            </div>
+            <div class="ui-field-contain">
+                <label for="sp0-slider">Dimmed 0:</label>
+                <input type="range" name="sp0-slider" id="dim0input" min="0" max="100" value="0" step="5" data-highlight="true">
+            </div>
+            <div class="ui-field-contain">
+                <label for="sp1-slider">Dimmed 1:</label>
+                <input type="range" name="sp1-slider" id="dim1input" min="0" max="100" value="0" step="5" data-highlight="true">
+            </div>
+        </form>
+    
+        <h3 class="ui-bar ui-bar-a ui-corner-all">Store: <span id="storeTime" class="timetxt">time</span></h3>	   
+    
+        <div class="ui-grid-b">
+          <div class="ui-block-a">
+            <a href="#" class="ui-btn ui-corner-all ui-shadow"><span id="storeTemp">temp</span></a>
+          </div>
+          <div class="ui-block-b">
+            <a href="#" class="ui-btn ui-corner-all ui-shadow"><span id="storeHumidity">humidity</span></a>
+          </div>
+          <div class="ui-block-c">
+            <a href="#" class="ui-btn ui-corner-all ui-shadow"><span id="storeRoC">roc</span></a>
+          </div>
+        </div> <!-- Temp, humidity, RoC --> 
+      </div> <!-- main -->
+    </div> <!-- page -->
+
+  
+  <!-- Source Paho MQTT Client-->
+  <script src="js/mqttws31.js"></script>
+  <!-- Interfact to studio -->
+  <script src="js/utility.js"></script>
+</body>
+</html>

@@ -1,0 +1,340 @@
+/*
+ * Studio Light Control Module
+ * 
+ * We have 4 relays and 2 dimmers available and these are controlled
+ * by commands received from the MQTT broker
+ * 
+ * studio/light/sw/0
+ * studio/light/sw/1
+ * studio/light/sw/2
+ * studio/light/sw/3
+ * studio/light/dim/0
+ * studio/light/dim/1
+ * 
+ */
+#include <ESP8266WiFi.h>
+#include <PubSubClient.h>
+#include <Wire.h>
+#include <EasyTransferI2C.h>
+#include <WiFiUdp.h>
+#include <time.h>
+
+IPAddress timeServerIP; // time.nist.gov NTP server address
+const char* ntpServerName = "time.nist.gov";
+unsigned int localPort = 2390;      // local port to listen for UDP packets
+const int NTP_PACKET_SIZE = 48; // NTP time stamp is in the first 48 bytes of the message
+byte packetBuffer[ NTP_PACKET_SIZE]; //buffer to hold incoming and outgoing packets
+
+// A UDP instance to let us send and receive packets over UDP
+WiFiUDP udp;
+
+#define NTP_UPDATE_INTERVAL 10000
+
+//Time since Unix epoch
+unsigned long epoch = 0;
+
+// Connect to the WiFi
+const char* ssid[] = {  "wifi-1", "wifi-2", };
+const char* password = "------";
+const char* mqtt_server = "192.168.1.127";
+ 
+WiFiClient espClient;
+PubSubClient client(espClient);
+ 
+const uint8 numRelay = 4;
+const uint8 relayPin[] = {  D1, D2, D3, D4 };
+
+// We use i2c to talk to a slave controller, the slave controller
+// does te timing and controll or our dimmers
+
+//create object
+EasyTransferI2C ET; 
+
+struct RECEIVE_DATA_STRUCTURE{
+  char ch_0;
+  char ch_1;
+};
+
+//give a name to the group of data
+RECEIVE_DATA_STRUCTURE mydata;
+//define slave i2c address
+#define I2C_SLAVE_ADDRESS 9
+
+/*
+ * Digital light switch callbacks
+ */
+void lightsw0_cb(char* topic, String* payload, unsigned int length)
+{
+  Serial.println("lightsw0_cb");
+  lightsw_cb(0, payload, length);
+}
+void lightsw1_cb(char* topic, String* payload, unsigned int length)
+{
+  Serial.println("lightsw1_cb");
+  lightsw_cb(1, payload, length);
+}
+void lightsw2_cb(char* topic, String* payload, unsigned int length)
+{
+  Serial.println("lightsw2_cb");
+  lightsw_cb(2, payload, length);
+}
+void lightsw3_cb(char* topic, String* payload, unsigned int length)
+{
+  Serial.println("lightsw3_cb");
+  lightsw_cb(3, payload, length);
+}
+
+/*
+ * Common callback
+ *
+ * Here we pulish our switch status and turn a relay on/off as requested
+ */
+void lightsw_cb(byte switchNum, String* payload, unsigned int length)
+{
+  char topic[] = "studio/state/light/sw/N";
+  char *p = topic;
+
+  p+= strlen(topic) -1;
+  *p = '0' + switchNum;
+  
+  client.publish(topic, payload->toInt() == 0 ? "0" : "1", true);
+
+  digitalWrite(relayPin[switchNum], payload->toInt() == 0 ? 1 : 0);
+}
+
+/*
+ * publishDim - This function publishes the Dimmers status to the
+ * 	        MQTT broker
+ */
+void publishDim(byte num, byte val)
+{
+  static char buf[20];
+  char topic[] = "studio/state/light/dim/N";
+  char *p = topic;
+
+  p+= strlen(topic) -1;
+  *p = '0' + num;
+  
+  client.publish(topic, itoa(val, buf, 10), true);
+}
+
+/*
+ * Dimmer callbacks
+ * Tell the slave what settings we want, then publish to the broker
+ */
+ 
+void dimmer0_cb(char* topic, String* payload, unsigned int length)
+{
+  Serial.println("dimmer0_cb");
+  mydata.ch_0 = payload->toInt();
+  ET.sendData(I2C_SLAVE_ADDRESS);
+  //dimmer_cb(&dimmer0, payload, length);
+  publishDim(0, payload->toInt());
+  
+}
+
+void dimmer1_cb(char* topic, String* payload, unsigned int length)
+{
+  Serial.println("dimmer1_cb");
+  mydata.ch_1 = payload->toInt();
+  ET.sendData(I2C_SLAVE_ADDRESS);  
+  //dimmer_cb(&dimmer1, payload, length);
+  publishDim(1, payload->toInt());
+}
+
+/*
+ * Implement callback registration, this allows us to call a function
+ * when we receive an update on a topic to which we are subscribed
+ */
+struct cb_struct {
+  char *registeredTopic;
+  void (*callback)(char* , String* , unsigned int );
+};
+
+struct cb_struct cbacks[8];
+byte num_cbacks = 0;
+
+void register_cb(void (*callback)(char *, String *, unsigned int), char *topic)
+{
+  cbacks[num_cbacks].registeredTopic = topic;
+  cbacks[num_cbacks].callback = callback;
+  num_cbacks++;
+}
+
+void subscribe_topics()
+{
+  for (int i=0; i<num_cbacks; i++) {
+    client.subscribe(cbacks[i].registeredTopic);
+  }
+}
+
+/*
+ * studio/light/sw/0
+ * studio/light/sw/1
+ * studio/light/sw/2
+ * studio/light/sw/3
+ * studio/light/dim/0
+ * studio/light/dim/1
+ */
+void register_studio_cbs()
+{
+  Serial.println("register_studio_cbs: Registering callbacks");
+    
+  register_cb(lightsw0_cb, "studio/light/sw/0");
+  register_cb(lightsw1_cb, "studio/light/sw/1");
+  register_cb(lightsw2_cb, "studio/light/sw/2");
+  register_cb(lightsw3_cb, "studio/light/sw/3");
+
+  register_cb(dimmer0_cb, "studio/light/dim/0");
+  register_cb(dimmer1_cb, "studio/light/dim/1");
+}
+
+void callback(char* topic, byte* payload, unsigned int length)
+{
+  // handle message arrived
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+
+  String inStr;
+
+  for (int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
+    inStr += (char)payload[i];
+  }
+
+  Serial.println();
+
+  for (int i = 0; i < num_cbacks; i++) {
+    if (strcmp(cbacks[i].registeredTopic, topic) == 0) {
+      //      Serial.println("Match");
+      (cbacks[i].callback)(topic, &inStr, length);
+      return;
+    }
+  }
+}
+
+bool reconnect() {
+  Serial.print("Attempting MQTT connection...");
+  if (client.connect("ESP8266 Studio Light Client")) {
+    Serial.println("connected");
+    subscribe_topics();
+    Serial.println("subscriptions completed");
+  }
+  return client.connected();
+}
+
+
+
+void setup()
+{
+  Serial.begin(9600);
+
+  // Safe Relay initialisation, keeps outputs off
+  
+  for (int i=0; i < numRelay; i++) {
+    digitalWrite(relayPin[i], HIGH);
+    pinMode(relayPin[i], OUTPUT);
+  }
+  register_studio_cbs();
+
+  client.setServer(mqtt_server, 1883);
+  client.setCallback(callback);
+
+  // Dimmer config
+  Wire.begin(D6,D7);
+  //start the library, pass in the data details and the name of the serial port. Can be Serial, Serial1, Serial2, etc.
+  ET.begin(details(mydata), &Wire);
+  
+  mydata.ch_0 = 0; // Off
+  mydata.ch_1 = 0; // Off
+  ET.sendData(I2C_SLAVE_ADDRESS);
+
+   // UDP
+  Serial.println("Starting UDP");
+  udp.begin(localPort);
+  Serial.print("Local port: ");
+  Serial.println(udp.localPort());
+}
+
+// send an NTP request to the time server at the given address
+unsigned long sendNTPpacket(IPAddress& address)
+{
+  Serial.println("sending NTP packet...");
+  // set all bytes in the buffer to 0
+  memset(packetBuffer, 0, NTP_PACKET_SIZE);
+  // Initialize values needed to form NTP request
+  // (see URL above for details on the packets)
+  packetBuffer[0] = 0b11100011;   // LI, Version, Mode
+  packetBuffer[1] = 0;     // Stratum, or type of clock
+  packetBuffer[2] = 6;     // Polling Interval
+  packetBuffer[3] = 0xEC;  // Peer Clock Precision
+  // 8 bytes of zero for Root Delay & Root Dispersion
+  packetBuffer[12]  = 49;
+  packetBuffer[13]  = 0x4E;
+  packetBuffer[14]  = 49;
+  packetBuffer[15]  = 52;
+
+  // all NTP fields have been given values, now
+  // you can send a packet requesting a timestamp:
+  udp.beginPacket(address, 123); //NTP requests are to port 123
+  udp.write(packetBuffer, NTP_PACKET_SIZE);
+  udp.endPacket();
+}
+
+void ntpUpdate()
+{
+  static unsigned long lastRan = 0;
+  char buf[20];
+
+  if (millis() < lastRan + NTP_UPDATE_INTERVAL) {
+    return;
+  }
+  lastRan = millis();
+
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("ntpUpdate: Not connected");
+    return;
+  }
+
+  int cb = udp.parsePacket();
+  if (!cb) {
+    Serial.println("ntpUpdate: no packet yet");
+    //get a random server from the pool
+    WiFi.hostByName(ntpServerName, timeServerIP); 
+  
+    sendNTPpacket(timeServerIP); // send an NTP packet to a time server   
+    Serial.println("ntpUpdate: Request sent");    
+  }
+  else {
+    Serial.print("ntpUpdate: packet received, length=");
+    Serial.println(cb);
+    // We've received a packet, read the data from it
+    udp.read(packetBuffer, NTP_PACKET_SIZE); // read the packet into the buffer
+
+    //the timestamp starts at byte 40 of the received packet and is four bytes,
+    // or two words, long. First, esxtract the two words:
+
+    unsigned long highWord = word(packetBuffer[40], packetBuffer[41]);
+    unsigned long lowWord = word(packetBuffer[42], packetBuffer[43]);
+    // combine the four bytes (two words) into a long integer
+    // this is NTP time (seconds since Jan 1 1900):
+    unsigned long secsSince1900 = highWord << 16 | lowWord;
+
+    // Unix time starts on Jan 1 1970. In seconds, that's 2208988800:
+    const unsigned long seventyYears = 2208988800UL;
+    // subtract seventy years:
+    epoch = secsSince1900 - seventyYears;
+
+    client.publish("studio/state/time/1", itoa(epoch, buf, 10), true);
+    
+    // print Unix time:
+    Serial.println(epoch);
+      client.loop();
+    } 
+  }
+  
+  ntpUpdate();
+  
+}
+
